@@ -1,0 +1,9 @@
+{
+  "porta": 8765,
+  "tamanho_maximo_mb": 50,
+  "tolerancia_posicao_pt": 1.0,
+  "tolerancia_pixels_pct": 0.5,
+  "max_iteracoes": 4,
+  "dias_retencao": 30,
+  "manter_arquivos_trabalho": false
+}

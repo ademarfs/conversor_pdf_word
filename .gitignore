@@ -1,0 +1,10 @@
+# Ambiente e dados locais (nunca versionar: contêm documentos convertidos)
+.venv/
+dados/
+config.json
+
+# Caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/

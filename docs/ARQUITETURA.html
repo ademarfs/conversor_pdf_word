@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arquitetura</title>
+<style>
+body { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; font: 15px/1.6 "Segoe UI", Arial, sans-serif;
+       color: #1d2329; background: #fff; }
+h1, h2, h3 { line-height: 1.3; margin-top: 1.6em; }
+h1 { margin-top: 0; border-bottom: 1px solid #d9dee3; padding-bottom: 6px; }
+h2 { border-bottom: 1px solid #eceff2; padding-bottom: 4px; }
+a { color: #1f5fbf; }
+code { font: 13px Consolas, monospace; background: #f3f4f6; padding: 1px 4px; border-radius: 3px; }
+pre { background: #f3f4f6; padding: 12px; overflow-x: auto; border-radius: 4px; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; display: block; overflow-x: auto; }
+th, td { border: 1px solid #d9dee3; padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: #f6f7f9; }
+nav { font-size: 13px; color: #5c6670; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+
+</style>
+</head>
+<body>
+<nav><a href="../README.html">README</a><a href="../docs/ALGORITMO.html">ALGORITMO</a><a href="../docs/ANALISE_E_PENDENCIAS.html">ANALISE_E_PENDENCIAS</a><a href="../docs/ARQUITETURA.html">ARQUITETURA</a></nav>
+<h1 id="arquitetura">Arquitetura</h1>
+<h2 id="visão-geral">Visão geral</h2>
+<pre><code>                 ┌──────────── web/app.py (Flask + waitress, 127.0.0.1) ───────────┐
+ navegador ─────►│ upload · resultado · prévias · histórico · download              │
+                 └──────────────────────────────┬──────────────────────────────────┘
+ converter.bat ─► __main__.py (CLI) ────────────┤
+                                                ▼
+                                  servico.py  ServicoConversao
+             ┌──────────────┬───────────────┬───┴──────────┬──────────────┬───────────────┐
+             ▼              ▼               ▼              ▼              ▼               ▼
+        extracao.py   layout/grade.py  gerador/       word.py        verificacao.py  persistencia.py
+        (PyMuPDF)     layout/absoluto  escritor.py    (Word COM)     palavras.py     (SQLite)
+             │        layout/paragrafos ooxml.py                      calibracao.py
+             ▼              │               ▲
+        modelo.py ──────────┴─► layout/plano.py
+</code></pre>
+<p>Dependências apontam para dentro: <code>modelo</code> e <code>plano</code> não conhecem PyMuPDF, Word nem banco.
+Cada motor recebe um <code>Documento</code> e devolve um <code>PlanoDocumento</code>; o escritor só traduz o plano.</p>
+<h2 id="módulos">Módulos</h2>
+<table>
+<thead>
+<tr>
+<th>Módulo</th>
+<th>Responsabilidade</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.py</code></td>
+<td>Configuração (dataclass) + leitura do <code>config.json</code>; constante medida <code>FATOR_BASE_WORD</code></td>
+</tr>
+<tr>
+<td><code>modelo.py</code></td>
+<td>Modelo neutro do PDF: <code>Documento</code>, <code>Pagina</code>, <code>Trecho</code>, <code>Segmento</code>, <code>Forma</code>, <code>Imagem</code></td>
+</tr>
+<tr>
+<td><code>extracao.py</code></td>
+<td>PDF → modelo (texto, desenhos, imagens, ordem de pintura, avisos)</td>
+</tr>
+<tr>
+<td><code>fontes.py</code></td>
+<td>Nome de fonte do PDF → família do Windows; detecção de fonte ausente (registro do Windows)</td>
+</tr>
+<tr>
+<td><code>layout/plano.py</code></td>
+<td>Plano de montagem resolvido em pontos (linhas, células, quadros, runs)</td>
+</tr>
+<tr>
+<td><code>layout/paragrafos.py</code></td>
+<td>Agrupamento em linhas, montagem de parágrafo (recuo/tabulação/runs), empilhamento vertical</td>
+</tr>
+<tr>
+<td><code>layout/grade.py</code></td>
+<td>Motor <strong>tabela</strong></td>
+</tr>
+<tr>
+<td><code>layout/absoluto.py</code></td>
+<td>Motor <strong>absoluto</strong></td>
+</tr>
+<tr>
+<td><code>gerador/ooxml.py</code></td>
+<td>Construtores de XML WordprocessingML (sem regra de negócio)</td>
+</tr>
+<tr>
+<td><code>gerador/escritor.py</code></td>
+<td>Plano → <code>.docx</code> (uma seção por página, objetos ancorados na ordem de pintura)</td>
+</tr>
+<tr>
+<td><code>word.py</code></td>
+<td><code>.docx</code> → PDF pelo Word (COM), instância exclusiva, serializada por trava</td>
+</tr>
+<tr>
+<td><code>palavras.py</code></td>
+<td>Regra única de divisão em palavras (original e resultado)</td>
+</tr>
+<tr>
+<td><code>verificacao.py</code></td>
+<td>Relatório: texto, desvios por palavra, diferença visual; prévias</td>
+</tr>
+<tr>
+<td><code>calibracao.py</code></td>
+<td><code>Ajustes</code> (por fonte, por palavra) e recalibração a partir dos desvios</td>
+</tr>
+<tr>
+<td><code>persistencia.py</code></td>
+<td>Repositório SQLite</td>
+</tr>
+<tr>
+<td><code>servico.py</code></td>
+<td>Orquestração: reaproveitamento, motores, iterações, escolha, publicação, limpeza</td>
+</tr>
+<tr>
+<td><code>registro.py</code></td>
+<td>Logs (console + arquivo rotativo)</td>
+</tr>
+<tr>
+<td><code>__main__.py</code></td>
+<td>Linha de comando</td>
+</tr>
+<tr>
+<td><code>web/</code></td>
+<td>Interface (Flask), templates Jinja e CSS</td>
+</tr>
+</tbody>
+</table>
+<h2 id="fluxo-de-uma-conversão">Fluxo de uma conversão</h2>
+<ol>
+<li><code>extrair(pdf)</code> → <code>Documento</code> (+ SHA-256 e avisos).</li>
+<li>Existe conversão aprovada do mesmo SHA-256 na mesma <code>VERSAO</code>? Devolve-a.</li>
+<li>Registra a conversão e arquiva uma cópia do PDF em <code>dados/entrada/&lt;id&gt;.pdf</code>.</li>
+<li>Ordem dos motores: escolhido pelo usuário, ou o preferido do perfil de layout, ou <code>tabela → absoluto</code>.</li>
+<li>Para cada motor, até <code>max_iteracoes</code>: <code>planejar</code> → <code>salvar .docx</code> → <code>docx_para_pdf</code> →
+   <code>verificar</code> → aprovado? senão <code>recalibrar</code> e repete. Grava cada tentativa.</li>
+<li>Melhor tentativa → <code>dados/saida/&lt;id&gt;/&lt;nome&gt;.docx</code> + prévias; atualiza perfil e calibração.</li>
+<li>Remove <code>dados/trabalho/&lt;id&gt;</code> (salvo <code>manter_arquivos_trabalho</code>).</li>
+</ol>
+<h2 id="banco-de-dados-dadosconversordb">Banco de dados (<code>dados/conversor.db</code>)</h2>
+<pre><code class="language-sql">conversoes        (id, criado_em, nome_original, sha256, versao_conversor, caminho_pdf, paginas,
+                   status, motor, iteracoes, texto_identico, desvio_maximo_pt, desvio_medio_pt,
+                   pixels_maximo_pct, relatorio_json, ajustes_json, avisos_json, caminho_docx,
+                   previas_json, duracao_s, mensagem_erro)
+tentativas        (id, conversao_id → conversoes, motor, iteracao, aprovado, texto_identico,
+                   desvio_maximo_pt, pixels_maximo_pct, duracao_s)
+calibracao_fontes (motor, chave &quot;Família|NI|tamanho&quot;, dx, dy, amostras, atualizado_em)  PK (motor, chave)
+perfis_layout     (assinatura &quot;gerador|fontes|formatos&quot;, motor_preferido, conversoes, aprovadas, atualizado_em)
+esquema           (versao)
+</code></pre>
+<p><code>status</code>: <code>processando</code>, <code>aprovado</code>, <code>aprovado_sem_word</code>, <code>com_diferencas</code>, <code>erro</code>.
+Consultas úteis:</p>
+<pre><code class="language-sql">-- taxa de aprovação por motor
+SELECT motor, COUNT(*), SUM(status = 'aprovado') FROM conversoes GROUP BY motor;
+-- conversões com diferença e o porquê
+SELECT id, nome_original, desvio_maximo_pt, pixels_maximo_pct, avisos_json
+  FROM conversoes WHERE status = 'com_diferencas' ORDER BY id DESC;
+</code></pre>
+<h2 id="configuração">Configuração</h2>
+<p><code>config.json</code> na raiz (opcional; chaves desconhecidas geram erro):</p>
+<table>
+<thead>
+<tr>
+<th>Chave</th>
+<th>Padrão</th>
+<th>Efeito</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pasta_dados</code></td>
+<td><code>dados</code></td>
+<td>onde ficam banco, entradas, saídas e logs</td>
+</tr>
+<tr>
+<td><code>porta</code> / <code>host</code></td>
+<td><code>8765</code> / <code>127.0.0.1</code></td>
+<td>endereço da interface (mantenha <code>127.0.0.1</code>)</td>
+</tr>
+<tr>
+<td><code>tamanho_maximo_mb</code></td>
+<td><code>50</code></td>
+<td>limite de upload</td>
+</tr>
+<tr>
+<td><code>tolerancia_posicao_pt</code></td>
+<td><code>1.0</code></td>
+<td>desvio máximo por palavra para aprovar</td>
+</tr>
+<tr>
+<td><code>tolerancia_pixels_pct</code></td>
+<td><code>0.5</code></td>
+<td>diferença visual máxima (fora do texto) para aprovar</td>
+</tr>
+<tr>
+<td><code>max_iteracoes</code></td>
+<td><code>4</code></td>
+<td>tentativas por motor</td>
+</tr>
+<tr>
+<td><code>deslocamento_maximo_pt</code></td>
+<td><code>0.5</code></td>
+<td>quanto o motor tabela pode subir um texto para não ser cortado pela borda</td>
+</tr>
+<tr>
+<td><code>agrupamento_x_pt</code> / <code>agrupamento_y_pt</code></td>
+<td><code>1.0</code> / <code>0.6</code></td>
+<td>coordenadas mais próximas que isso se unem (colunas/linhas da tabela)</td>
+</tr>
+<tr>
+<td><code>folga_ancoragem_pt</code></td>
+<td><code>1.0</code></td>
+<td>tolerância para decidir a célula de um texto</td>
+</tr>
+<tr>
+<td><code>lacuna_tabulacao_pt</code></td>
+<td><code>1.0</code></td>
+<td>vão mínimo entre trechos para usar tabulação</td>
+</tr>
+<tr>
+<td><code>max_colunas_tabela</code></td>
+<td><code>63</code></td>
+<td>limite do Word</td>
+</tr>
+<tr>
+<td><code>dias_retencao</code></td>
+<td><code>30</code></td>
+<td>apaga PDFs/Words mais antigos (histórico permanece)</td>
+</tr>
+<tr>
+<td><code>manter_arquivos_trabalho</code></td>
+<td><code>false</code></td>
+<td>guarda todas as tentativas em <code>dados/trabalho</code> (diagnóstico)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="padrões-de-código-clean-code">Padrões de código (Clean Code)</h2>
+<ul>
+<li><strong>Nomes em português</strong>, do domínio (<code>Trecho</code>, <code>Segmento</code>, <code>empilhar</code>, <code>recalibrar</code>), sem abreviações.</li>
+<li><strong>Uma responsabilidade por módulo</strong>; funções curtas; a regra de layout nunca está no gerador de XML.</li>
+<li><strong>Sem números mágicos</strong>: toda constante tem nome e comentário com a origem (muitas vieram de
+  medição no Word, documentadas em <a href="ALGORITMO.html">ALGORITMO.md</a>).</li>
+<li><strong>Dados imutáveis onde possível</strong> (<code>dataclass(frozen=True)</code>), cópias com <code>dataclasses.replace</code>.</li>
+<li><strong>Erros esperados</strong> viram <code>ErroConversao</code> com mensagem para o usuário; inesperados são logados
+  com stack trace e a conversão fica com status <code>erro</code>.</li>
+<li><strong>O arquivo do usuário nunca é alterado</strong>: o serviço trabalha numa cópia; a limpeza só apaga
+  dentro de <code>dados/</code>.</li>
+<li><strong>Qualidade verificável</strong>: <code>ruff</code> (configuração em <code>ruff.toml</code>) e <code>pytest</code> (49 testes; os
+  marcados <code>word</code> usam o Word real; PDFs de teste são sintéticos, gerados no próprio teste).</li>
+</ul>
+<h2 id="como-estender">Como estender</h2>
+<ul>
+<li><strong>Novo motor</strong>: classe com <code>nome</code> e <code>planejar(documento, ajustes) -&gt; PlanoDocumento</code>; registrar
+  em <code>servico.MOTORES</code> e (se quiser) em <code>ORDEM_PADRAO</code>. O escritor, a verificação e a persistência
+  funcionam sem mudança.</li>
+<li><strong>Nova fonte equivalente</strong>: incluir em <code>fontes.EQUIVALENTES</code>.</li>
+<li><strong>Mudança que altera o resultado</strong>: suba <code>VERSAO</code> em <code>conversor/__init__.py</code> para invalidar os
+  resultados reaproveitados.</li>
+</ul>
+</body>
+</html>

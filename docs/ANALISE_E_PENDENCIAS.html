@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Análise: limitações, riscos e informações que faltam</title>
+<style>
+body { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; font: 15px/1.6 "Segoe UI", Arial, sans-serif;
+       color: #1d2329; background: #fff; }
+h1, h2, h3 { line-height: 1.3; margin-top: 1.6em; }
+h1 { margin-top: 0; border-bottom: 1px solid #d9dee3; padding-bottom: 6px; }
+h2 { border-bottom: 1px solid #eceff2; padding-bottom: 4px; }
+a { color: #1f5fbf; }
+code { font: 13px Consolas, monospace; background: #f3f4f6; padding: 1px 4px; border-radius: 3px; }
+pre { background: #f3f4f6; padding: 12px; overflow-x: auto; border-radius: 4px; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; display: block; overflow-x: auto; }
+th, td { border: 1px solid #d9dee3; padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: #f6f7f9; }
+nav { font-size: 13px; color: #5c6670; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+
+</style>
+</head>
+<body>
+<nav><a href="../README.html">README</a><a href="../docs/ALGORITMO.html">ALGORITMO</a><a href="../docs/ANALISE_E_PENDENCIAS.html">ANALISE_E_PENDENCIAS</a><a href="../docs/ARQUITETURA.html">ARQUITETURA</a></nav>
+<h1 id="análise-limitações-riscos-e-informações-que-faltam">Análise: limitações, riscos e informações que faltam</h1>
+<p>Levantamento feito ao fim da versão 1.0.0 (2 de outubro de 2026), depois de testar com 5 PDFs
+reais de origens diferentes (SAP, Word, Canva, CAD, escaneado) e 49 testes automatizados.</p>
+<h2 id="1-perguntas-em-aberto-precisam-de-decisão">1. Perguntas em aberto (precisam de decisão)</h2>
+<table>
+<thead>
+<tr>
+<th>#</th>
+<th>Pergunta</th>
+<th>Por que importa</th>
+<th>Padrão adotado até a resposta</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>P1</td>
+<td><strong>Quem vai usar e onde?</strong> Só nesta máquina, ou vários usuários pela rede?</td>
+<td>A Microsoft não suporta automação do Word em servidor sem usuário (instabilidade e licenciamento). Uso em rede exige outra arquitetura: um posto Windows dedicado com fila de conversões, ou motor de verificação sem Word.</td>
+<td>Uso local, um usuário por máquina; a interface só aceita <code>127.0.0.1</code>.</td>
+</tr>
+<tr>
+<td>P2</td>
+<td><strong>Retenção e LGPD</strong>: por quanto tempo guardar PDFs e Words (certificados de clientes, currículos)?</td>
+<td>A pasta <code>dados/</code> guarda cópias dos documentos.</td>
+<td>30 dias (<code>dias_retencao</code>); o histórico sem arquivos fica.</td>
+</tr>
+<tr>
+<td>P3</td>
+<td><strong>PDFs escaneados precisam virar texto editável (OCR)?</strong></td>
+<td>Hoje a página escaneada vira imagem no Word: visualmente idêntica, mas não editável. OCR (ex.: Tesseract) introduz erros de reconhecimento e contradiz o "sem alteração nenhuma".</td>
+<td>Imagem, com aviso.</td>
+</tr>
+<tr>
+<td>P4</td>
+<td><strong>Prioridade: fidelidade visual ou edição livre?</strong></td>
+<td>Os dois motores mantêm cada linha na posição exata. Isso é o que garante fidelidade, mas, se você digitar muito texto a mais numa célula ou moldura, ele não "empurra" o resto como num documento comum.</td>
+<td>Fidelidade.</td>
+</tr>
+<tr>
+<td>P5</td>
+<td><strong>Onde o Word deve ser entregue?</strong> Download, pasta de rede, e-mail, integração com SAP/Protheus?</td>
+<td>Define se vale um modo "pasta monitorada" (converte tudo o que cair numa pasta).</td>
+<td>Download pela interface, ou ao lado do PDF via <code>converter.bat</code>.</td>
+</tr>
+<tr>
+<td>P6</td>
+<td><strong>Versões do Office na empresa.</strong></td>
+<td>Testado no Word 16 (Microsoft 365). Word 2013 ou anterior não foi testado (a medida 0,8·L e o tratamento de bordas foram medidos no 16).</td>
+<td>Word 2016+.</td>
+</tr>
+<tr>
+<td>P7</td>
+<td><strong>Política de TI</strong>: o PowerShell pode rodar scripts? Há proxy? O <code>winget</code> é permitido?</td>
+<td>O instalador usa <code>-ExecutionPolicy Bypass</code> só no próprio processo, <code>pip</code> (internet) e, sem Python, <code>winget</code>.</td>
+<td>Instalação por usuário, sem administrador.</td>
+</tr>
+<tr>
+<td>P8</td>
+<td><strong>Volume</strong>: quantos PDFs por dia e de quantas páginas?</td>
+<td>Cada tentativa abre o Word (≈ 3–10 s). As conversões são feitas uma de cada vez. Lotes grandes pedem uma fila e um processo em segundo plano.</td>
+<td>Conversão sob demanda.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-limitações-conhecidas-o-que-pode-sair-com-diferenças">2. Limitações conhecidas (o que pode sair "Com diferenças")</h2>
+<p>A verificação <strong>detecta</strong> todos estes casos e marca a conversão como "Com diferenças". Nenhum
+passa despercebido.</p>
+<table>
+<thead>
+<tr>
+<th>Situação no PDF</th>
+<th>Comportamento atual</th>
+<th>Possível evolução</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fonte não instalada no Windows</td>
+<td>Usa substituta e corrige o espaçamento palavra a palavra; o formato das letras muda. Aviso com o nome da fonte.</td>
+<td>Extrair a fonte embutida no PDF e embuti-la no .docx (subconjuntos de fonte têm restrições de licença).</td>
+</tr>
+<tr>
+<td>Degradês, padrões e sombras (<em>shadings</em>)</td>
+<td>Não extraídos (o PyMuPDF não os entrega como desenho).</td>
+<td>Rasterizar a área do degradê como imagem.</td>
+</tr>
+<tr>
+<td>Máscaras de recorte (<em>clipping</em>) em desenhos vetoriais</td>
+<td>O desenho aparece inteiro, sem o recorte. Comum em PDFs de Canva/Illustrator.</td>
+<td>Aplicar o recorte ou rasterizar a área recortada.</td>
+</tr>
+<tr>
+<td>Texto coberto por desenho (ex.: tarja sobre texto)</td>
+<td>O texto fica sempre por cima dos desenhos no Word.</td>
+<td>Rasterizar o desenho que cobre o texto como imagem por cima.</td>
+</tr>
+<tr>
+<td>Texto inclinado ou vertical</td>
+<td>Posicionado na horizontal (aviso).</td>
+<td>Caixa de texto girada.</td>
+</tr>
+<tr>
+<td>Página com rotação (<code>/Rotate</code>)</td>
+<td>Aviso; pode ficar deslocada.</td>
+<td>Aplicar a matriz de rotação.</td>
+</tr>
+<tr>
+<td>Links, marcadores, comentários, campos de formulário, assinatura digital</td>
+<td>Não são levados ao Word (o texto visível é). A assinatura digital não pode ser transferida por natureza.</td>
+<td>Converter links em hiperlinks do Word.</td>
+</tr>
+<tr>
+<td>Cabeçalho e rodapé repetidos</td>
+<td>Vão como conteúdo de cada página, não como cabeçalho/rodapé do Word.</td>
+<td>Detectar elementos repetidos e mover para o cabeçalho/rodapé.</td>
+</tr>
+<tr>
+<td>Idiomas da direita para a esquerda (árabe, hebraico)</td>
+<td>Não tratados.</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Página com mais de 63 colunas lógicas</td>
+<td>O motor tabela não se aplica; vai o absoluto (automático).</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3-riscos-e-mitigações">3. Riscos e mitigações</h2>
+<table>
+<thead>
+<tr>
+<th>Risco</th>
+<th>Mitigação implementada</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Alterar ou perder o PDF original</td>
+<td>O serviço só lê o original e trabalha numa cópia; a limpeza só apaga dentro de <code>dados/</code> (há teste para isso).</td>
+</tr>
+<tr>
+<td>Word travar ou ficar aberto em segundo plano</td>
+<td>Instância exclusiva e invisível, fechada em <code>finally</code>; conversões serializadas por trava. Ponto de atenção: um diálogo inesperado do Word (licença, recuperação de arquivo) pode travar a automação. Nesse caso, encerre o <code>WINWORD.EXE</code> pelo Gerenciador de Tarefas.</td>
+</tr>
+<tr>
+<td>Acesso indevido à interface</td>
+<td>Servidor só em <code>127.0.0.1</code>, recusa cabeçalho <code>Host</code> estranho (proteção contra <em>DNS rebinding</em>), valida a assinatura <code>%PDF-</code> e o tamanho do upload.</td>
+</tr>
+<tr>
+<td>Resultado "aprovado" errado</td>
+<td>Três medidas independentes (texto, posição, pixels); tolerâncias configuráveis; prévias lado a lado para conferência humana.</td>
+</tr>
+<tr>
+<td>Mudança de versão alterar resultados</td>
+<td><code>VERSAO</code> entra na chave de reaproveitamento; subir a versão invalida resultados antigos.</td>
+</tr>
+<tr>
+<td>Banco corrompido ou perdido</td>
+<td>Arquivo único <code>dados/conversor.db</code>. <strong>Recomendado</strong>: incluir <code>dados/</code> na rotina de backup.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="4-itens-de-projeto-ainda-não-feitos-sugestões-de-próximos-passos">4. Itens de projeto ainda não feitos (sugestões de próximos passos)</h2>
+<ol>
+<li><strong>Controle de versão</strong>: a pasta ainda não é um repositório Git. Recomendo <code>git init</code> e um
+   repositório interno (o <code>.gitignore</code> já exclui <code>.venv/</code> e <code>dados/</code>).</li>
+<li><strong>Assinatura dos scripts</strong> (<code>instalar.ps1</code>), se a política de TI exigir <em>AllSigned</em>.</li>
+<li><strong>Fila e processamento em segundo plano</strong> na interface, se o volume (P8) justificar; hoje a
+   página espera a conversão terminar.</li>
+<li><strong>Modo pasta monitorada</strong> (P5).</li>
+<li><strong>Painel de qualidade</strong>: taxa de aprovação por tipo de documento, a partir do banco
+   (as consultas estão em <a href="ARQUITETURA.html#banco-de-dados-dadosconversordb">ARQUITETURA.md</a>).</li>
+<li><strong>Testes com mais PDFs reais</strong> da operação: coloque-os numa pasta e rode
+   <code>set PASTA_EXEMPLOS=C:\pasta &amp;&amp; .venv\Scripts\python -m pytest -k reais</code>.</li>
+</ol>
+</body>
+</html>

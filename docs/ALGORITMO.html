@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Como a conversão funciona</title>
+<style>
+body { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; font: 15px/1.6 "Segoe UI", Arial, sans-serif;
+       color: #1d2329; background: #fff; }
+h1, h2, h3 { line-height: 1.3; margin-top: 1.6em; }
+h1 { margin-top: 0; border-bottom: 1px solid #d9dee3; padding-bottom: 6px; }
+h2 { border-bottom: 1px solid #eceff2; padding-bottom: 4px; }
+a { color: #1f5fbf; }
+code { font: 13px Consolas, monospace; background: #f3f4f6; padding: 1px 4px; border-radius: 3px; }
+pre { background: #f3f4f6; padding: 12px; overflow-x: auto; border-radius: 4px; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; display: block; overflow-x: auto; }
+th, td { border: 1px solid #d9dee3; padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: #f6f7f9; }
+nav { font-size: 13px; color: #5c6670; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+
+</style>
+</head>
+<body>
+<nav><a href="../README.html">README</a><a href="../docs/ALGORITMO.html">ALGORITMO</a><a href="../docs/ANALISE_E_PENDENCIAS.html">ANALISE_E_PENDENCIAS</a><a href="../docs/ARQUITETURA.html">ARQUITETURA</a></nav>
+<h1 id="como-a-conversão-funciona">Como a conversão funciona</h1>
+<p>Princípio: <strong>não adivinhar</strong>. Conversores comuns tentam deduzir parágrafos, colunas e estilos e
+"refluem" o texto — é aí que o layout desconfigura. Aqui cada elemento é <strong>medido</strong> no PDF e
+<strong>recolocado</strong> no Word na mesma coordenada; depois o resultado é <strong>conferido</strong> no próprio Word.</p>
+<p>Unidade: ponto tipográfico (1 pt = 1/72 pol ≈ 0,353 mm). Origem no canto superior esquerdo, y para baixo.</p>
+<pre><code>PDF ─► 1 Extração ─► 2 Layout (motor) ─► 3 Escrita .docx ─► 4 Word renderiza ─► 5 Verificação
+                          ▲                                                          │
+                          └──────── 6 Recalibração (se não aprovado) ◄───────────────┘
+                                         │
+                                         ▼
+                                7 Persistência (banco SQLite)
+</code></pre>
+<h2 id="1-extração-extracaopy">1. Extração (<code>extracao.py</code>)</h2>
+<p>Com o PyMuPDF, para cada página:</p>
+<table>
+<thead>
+<tr>
+<th>Elemento</th>
+<th>O que é lido</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Trechos de texto</strong></td>
+<td>texto exato (espaços inclusive), fonte, tamanho, negrito/itálico, cor, posição da <strong>linha de base</strong> e de cada caractere</td>
+</tr>
+<tr>
+<td><strong>Segmentos</strong></td>
+<td>linhas retas horizontais/verticais (bordas, sublinhados), espessura, cor, tracejado, opacidade</td>
+</tr>
+<tr>
+<td><strong>Formas</strong></td>
+<td>desenhos livres (curvas, diagonais, áreas preenchidas)</td>
+</tr>
+<tr>
+<td><strong>Imagens</strong></td>
+<td>na resolução original, com transparência</td>
+</tr>
+<tr>
+<td><strong>Ordem de pintura</strong></td>
+<td>a posição de cada desenho/imagem na sequência de desenho da página (quem cobre quem)</td>
+</tr>
+</tbody>
+</table>
+<p>Regras importantes:</p>
+<ul>
+<li><strong>Fonte</strong>: nomes do PDF viram a família equivalente do Windows (<code>Helvetica</code> → Arial,
+  <code>Times-Italic</code> → Times New Roman itálico, <code>ABCDEF+Calibri-Light</code> → Calibri Light). As
+  equivalentes têm <strong>as mesmas larguras de caracteres</strong>, por isso o texto ocupa o mesmo espaço.
+  Fonte ausente gera aviso.</li>
+<li><strong>Retângulo preenchido muito fino</strong> (≤ 2 pt) é uma linha desenhada como retângulo: vira segmento.</li>
+<li><strong>Elemento com opacidade 0</strong> existe no PDF mas não aparece: é ignorado.</li>
+<li><strong>Máscara de estêncil</strong> (imagem de 1 bit pintada com a cor de preenchimento, comum em logotipos
+  de sistemas como o SAP): é recortada da página já com a cor e a transparência corretas
+  (exportá-la "crua" faria o Word mostrá-la invertida, como um bloco preto).</li>
+<li><strong>Caractere sem Unicode</strong> (o PDF não diz qual letra é): o trecho é preservado como imagem.</li>
+<li><strong>Fonte de símbolos</strong> (Symbol/Wingdings) com caractere Unicode real (ex.: "•"): usa
+  <em>Segoe UI Symbol</em>, porque o Word só mostra Symbol com códigos privados.</li>
+</ul>
+<h2 id="2-layout--os-motores-layout">2. Layout — os motores (<code>layout/</code>)</h2>
+<h3 id="medição-que-sustenta-tudo">Medição que sustenta tudo</h3>
+<p>Com espaçamento de linha <strong>"Exatamente L"</strong>, o Word desenha a linha de base a <strong>0,8 · L</strong> do
+topo da linha, para qualquer fonte (medido no Word 16 com Arial e Times de 7 a 20 pt, erro &lt; 0,1 pt).
+Então, para um texto com base em <code>y</code>, basta a linha começar em <code>y − 0,8·L</code>. Posição horizontal:
+recuo do parágrafo e tabulações, em vigésimos de ponto.</p>
+<h3 id="motor-tabela-gradepy--mais-editável">Motor <strong>tabela</strong> (<code>grade.py</code>) — mais editável</h3>
+<p>A página vira <strong>uma tabela invisível</strong> com linhas de altura exata:</p>
+<ol>
+<li><strong>Cortes horizontais</strong> (fronteiras entre linhas da tabela): cada traço horizontal e as pontas
+   dos traços verticais; e o meio de cada vão vertical entre blocos de texto. Um corte é
+   proibido se atravessar um texto ou se obrigar um texto a subir mais de 0,5 pt.</li>
+<li><strong>Células</strong>: em cada linha, as pontas dos traços da borda inferior e as linhas verticais
+   que a atravessam definem as colunas. Cada texto vai para a célula onde começa; se não
+   couber com folga, as células são fundidas (o Word <strong>corta</strong>, não quebra, texto que encosta na borda).</li>
+<li><strong>Bordas</strong>: traço que cobre a célula inteira vira borda da célula; o que sobra é desenhado
+   como forma vetorial (nada se perde).</li>
+<li><strong>Dentro da célula</strong>: um parágrafo por linha visual, com recuo até o 1º trecho, tabulação
+   para os demais e "espaço antes" calculado para cair na linha de base exata.</li>
+</ol>
+<p>Comportamentos do Word medidos e compensados:</p>
+<table>
+<thead>
+<tr>
+<th>Comportamento do Word</th>
+<th>Compensação</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Borda inferior é desenhada <strong>abaixo</strong> do limite da célula (de y a y+espessura)</td>
+<td>o limite sobe meia espessura, centrando a borda no traço original</td>
+</tr>
+<tr>
+<td>O conteúdo da linha seguinte começa <strong>depois</strong> da espessura dessa borda</td>
+<td>o "espaço antes" desconta a espessura</td>
+</tr>
+<tr>
+<td>Borda vertical é centrada na divisa</td>
+<td>as colunas seguem a posição exata das linhas verticais</td>
+</tr>
+<tr>
+<td>Colunas muito estreitas (&lt; ~1 pt) desalinham a tabela inteira (até 6 pt!)</td>
+<td>coordenadas a menos de 1 pt viram a mesma coluna</td>
+</tr>
+<tr>
+<td>Linha de altura exata <strong>corta</strong> a tinta que passa do limite (pernas de g, p, ç, vírgula)</td>
+<td>o texto sobe até 0,5 pt; se precisar mais, aquele traço vira forma e não corta</td>
+</tr>
+<tr>
+<td>Máximo de 63 colunas por tabela</td>
+<td>página que exigiria mais é feita pelo motor absoluto</td>
+</tr>
+</tbody>
+</table>
+<h3 id="motor-absoluto-absolutopy--máxima-fidelidade">Motor <strong>absoluto</strong> (<code>absoluto.py</code>) — máxima fidelidade</h3>
+<p>Cada linha de texto é um parágrafo em <strong>moldura</strong> (<em>frame</em>) posicionada na coordenada exata da
+página; todas as linhas e formas são desenhos vetoriais ancorados na página. Funciona com qualquer
+PDF (plantas, currículos, layouts gráficos). O texto continua editável.</p>
+<h3 id="comum-aos-dois">Comum aos dois</h3>
+<ul>
+<li><strong>Uma seção do Word por página</strong> do PDF, com o mesmo tamanho e margens zero — páginas de
+  tamanhos/orientações diferentes no mesmo arquivo funcionam.</li>
+<li><strong>Imagens e desenhos</strong> ficam atrás do texto, <strong>empilhados na ordem de pintura do PDF</strong>
+  (um retângulo branco que cobre linhas no PDF continua cobrindo no Word).</li>
+</ul>
+<h2 id="3-escrita-do-docx-gerador">3. Escrita do .docx (<code>gerador/</code>)</h2>
+<p><code>escritor.py</code> traduz o plano para WordprocessingML; <code>ooxml.py</code> monta cada elemento XML na ordem
+exigida pelo esquema (tabela de layout fixo sem margens internas, molduras, desenhos <code>wps</code> com
+geometria livre, imagens ancoradas). O documento é marcado como Word 2013+ (sem "Modo de Compatibilidade").</p>
+<h2 id="4-renderização-pelo-word-wordpy">4. Renderização pelo Word (<code>word.py</code>)</h2>
+<p>O <code>.docx</code> é aberto numa instância <strong>invisível e exclusiva</strong> do Word (automação COM) e exportado
+em PDF. É exatamente o que o usuário verá ao abrir o arquivo — não uma simulação.</p>
+<h2 id="5-verificação-verificacaopy-palavraspy">5. Verificação (<code>verificacao.py</code>, <code>palavras.py</code>)</h2>
+<p>Três medidas independentes:</p>
+<ol>
+<li><strong>Texto</strong> — todas as palavras do original existem no resultado e nada sobra. As palavras
+   são pareadas na ordem de leitura (alinhamento de sequência, como um <em>diff</em>) e, o que sair da
+   ordem, pela mesma palavra mais próxima.</li>
+<li><strong>Posição</strong> — para cada palavra: desvio do início, do fim e da linha de base. Aprovação:
+   <strong>≤ 1 pt</strong> (configurável).</li>
+<li><strong>Visual</strong> — páginas renderizadas a 100 dpi, <strong>com as áreas de texto mascaradas</strong> (texto já foi
+   medido no item 2; assim a diferença de desenho entre fontes equivalentes não conta como erro),
+   tolerando 1 pixel de reamostragem. Pega linha faltando, imagem errada, forma fora do lugar.
+   Aprovação: <strong>≤ 0,5 %</strong> dos pixels.</li>
+</ol>
+<p>Detalhe medido: o Word exporta cada tabulação como um caractere de espaço que <strong>começa no mesmo
+x da letra seguinte</strong>; as letras são ordenadas pelo centro para isso não partir palavras.</p>
+<h2 id="6-recalibração-calibracaopy">6. Recalibração (<code>calibracao.py</code>)</h2>
+<p>Se não aprovou, os desvios medidos viram correções e uma nova tentativa é gerada (até 4 por motor):</p>
+<table>
+<thead>
+<tr>
+<th>Nível</th>
+<th>Correção</th>
+<th>Vale para</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Fonte</strong> (família/estilo/tamanho)</td>
+<td>deslocamento x/y sistemático (mediana; desvios &gt; 2 pt são ignorados por serem do layout, não da fonte)</td>
+<td><strong>todas as conversões futuras</strong> (gravado no banco)</td>
+</tr>
+<tr>
+<td><strong>Espaço antes de cada palavra</strong></td>
+<td>espaçamento extra no caractere anterior — corrige texto <strong>justificado</strong></td>
+<td>este documento</td>
+</tr>
+<tr>
+<td><strong>Largura de cada palavra</strong></td>
+<td>espaçamento entre as letras — corrige fonte substituta ou condensada</td>
+<td>este documento</td>
+</tr>
+</tbody>
+</table>
+<p>O espaço só responde pelo <strong>vão</strong> entre palavras quando a largura da palavra anterior também
+está sendo corrigida — senão o mesmo erro seria corrigido duas vezes. Valores arredondados para
+0,05 pt (resolução do Word). Resultado típico: texto justificado com 60 pt de desvio converge para
+&lt; 1 pt em 2–3 tentativas; reconversões do mesmo arquivo acertam na 1ª.</p>
+<h2 id="7-escolha-e-persistência-servicopy-persistenciapy">7. Escolha e persistência (<code>servico.py</code>, <code>persistencia.py</code>)</h2>
+<ul>
+<li>Fica a <strong>melhor tentativa</strong> (texto idêntico &gt; menor desvio &gt; menor diferença visual).</li>
+<li>Se o motor tabela não aprovar, tenta o absoluto. O motor aprovado para aquele <strong>tipo de
+  documento</strong> (gerador + fontes + formato) é tentado primeiro da próxima vez.</li>
+<li>Grava: métricas, cada tentativa, ajustes usados (permite reproduzir o mesmo resultado),
+  avisos, caminhos e prévias.</li>
+<li>Mesmo arquivo (SHA-256) já aprovado na mesma versão do conversor: o resultado é reaproveitado.</li>
+</ul>
+<h2 id="resultados-de-referência-2-de-outubro-de-2026-word-16-windows-11">Resultados de referência (2 de outubro de 2026, Word 16, Windows 11)</h2>
+<table>
+<thead>
+<tr>
+<th>Documento</th>
+<th>Motor</th>
+<th>Texto</th>
+<th>Desvio máx.</th>
+<th>Pixels</th>
+<th>Tentativas</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Certificado SAP, 2 págs.</td>
+<td>tabela</td>
+<td>idêntico</td>
+<td>0,69 pt</td>
+<td>0,00 %</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Certificado SAP, 4 págs.</td>
+<td>tabela</td>
+<td>idêntico</td>
+<td>0,69 pt</td>
+<td>0,07 %</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Currículo (Canva, fonte ausente)</td>
+<td>tabela</td>
+<td>idêntico</td>
+<td>0,84 pt</td>
+<td>0,00 %</td>
+<td>3 (1 na reconversão)</td>
+</tr>
+<tr>
+<td>Planta técnica A3 vetorial (1076 desenhos)</td>
+<td>absoluto</td>
+<td>idêntico</td>
+<td>0,00 pt</td>
+<td>0,00 %</td>
+<td>1</td>
+</tr>
+<tr>
+<td>Página escaneada (imagem JPEG, sem texto)</td>
+<td>qualquer</td>
+<td>—</td>
+<td>—</td>
+<td>0,07 %</td>
+<td>1</td>
+</tr>
+</tbody>
+</table>
+</body>
+</html>

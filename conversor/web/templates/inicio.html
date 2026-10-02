@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block conteudo %}
+<section>
+  <h1>Converter PDF em Word</h1>
+  <form id="form" method="post" action="{{ url_for('converter') }}" enctype="multipart/form-data">
+    <label class="arquivo" id="area">
+      <input type="file" name="pdf" accept="application/pdf,.pdf" required>
+      <span id="nome">Clique para escolher o PDF ou arraste-o para cá</span>
+    </label>
+    <div class="opcoes">
+      <label>Motor
+        <select name="motor">
+          <option value="">Automático (recomendado)</option>
+          <option value="tabela">Tabela — mais fácil de editar</option>
+          <option value="absoluto">Absoluto — máxima fidelidade</option>
+        </select>
+      </label>
+      <label class="marcar"><input type="checkbox" name="forcar" value="1"> Refazer mesmo se já convertido</label>
+    </div>
+    <button type="submit" id="enviar">Converter</button>
+    <p class="ajuda" id="progresso" hidden>Convertendo e conferindo com o original… isso leva de alguns segundos a alguns minutos.</p>
+  </form>
+  <p class="ajuda">O Word gerado é renderizado pelo próprio Microsoft Word e comparado com o PDF palavra
+    por palavra; se houver diferença, o sistema corrige e tenta de novo automaticamente.</p>
+</section>
+
+<section>
+  <h2>Últimas conversões</h2>
+  {% include "_tabela_conversoes.html" %}
+</section>
+
+<script>
+  const entrada = document.querySelector('input[name=pdf]');
+  const area = document.getElementById('area');
+  entrada.addEventListener('change', () => {
+    document.getElementById('nome').textContent = entrada.files[0] ? entrada.files[0].name : '';
+  });
+  ['dragover', 'dragenter'].forEach(e => area.addEventListener(e, ev => { ev.preventDefault(); area.classList.add('sobre'); }));
+  ['dragleave', 'drop'].forEach(e => area.addEventListener(e, () => area.classList.remove('sobre')));
+  area.addEventListener('drop', ev => {
+    ev.preventDefault();
+    entrada.files = ev.dataTransfer.files;
+    entrada.dispatchEvent(new Event('change'));
+  });
+  document.getElementById('form').addEventListener('submit', () => {
+    document.getElementById('enviar').disabled = true;
+    document.getElementById('progresso').hidden = false;
+  });
+</script>
+{% endblock %}

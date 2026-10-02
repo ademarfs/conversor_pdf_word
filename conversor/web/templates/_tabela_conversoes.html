@@ -1,0 +1,21 @@
+<table>
+  <thead>
+    <tr><th>#</th><th>Data</th><th>Arquivo</th><th>Situação</th><th>Motor</th><th>Desvio máx.</th><th>Tempo</th><th></th></tr>
+  </thead>
+  <tbody>
+  {% for c in conversoes %}
+    <tr>
+      <td>{{ c.id }}</td>
+      <td>{{ c.criado_em.replace('T', ' ') }}</td>
+      <td><a href="{{ url_for('resultado', conversao_id=c.id) }}">{{ c.nome_original }}</a></td>
+      <td><span class="status {{ c.status }}">{{ rotulos.get(c.status, c.status) }}</span></td>
+      <td>{{ c.motor or '—' }}</td>
+      <td>{{ '%.2f pt'|format(c.desvio_maximo_pt) if c.desvio_maximo_pt is not none else '—' }}</td>
+      <td>{{ '%.0f s'|format(c.duracao_s) if c.duracao_s is not none else '—' }}</td>
+      <td>{% if c.docx_disponivel %}<a href="{{ url_for('baixar', conversao_id=c.id) }}">baixar</a>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="vazio">Nenhuma conversão ainda.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>

@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block titulo %}{{ c.nome_original }} · Conversor PDF → Word{% endblock %}
+{% block conteudo %}
+<section>
+  <h1>{{ c.nome_original }}</h1>
+  <p><span class="status {{ c.status }}">{{ rotulos.get(c.status, c.status) }}</span></p>
+
+  {% if c.docx_disponivel %}
+    <p><a class="botao" href="{{ url_for('baixar', conversao_id=c.id) }}">Baixar Word (.docx)</a></p>
+  {% endif %}
+
+  {% if c.mensagem_erro %}<p class="erro">{{ c.mensagem_erro }}</p>{% endif %}
+
+  {% if c.status != 'erro' %}
+  <table class="metricas">
+    <tr><th>Texto idêntico ao original</th><td>{{ 'sim' if c.texto_identico else 'não' }}
+        ({{ c.relatorio.get('total_palavras', '?') }} palavras conferidas)</td></tr>
+    <tr><th>Maior desvio de posição</th><td>{{ '%.2f'|format(c.desvio_maximo_pt or 0) }} pt
+        <span class="ajuda">(1 pt = 0,35 mm)</span></td></tr>
+    <tr><th>Desvio médio</th><td>{{ '%.3f'|format(c.desvio_medio_pt or 0) }} pt</td></tr>
+    <tr><th>Diferença visual (fora do texto)</th><td>{{ '%.2f'|format(c.pixels_maximo_pct or 0) }}% dos pixels</td></tr>
+    <tr><th>Motor / tentativas</th><td>{{ c.motor }} / {{ c.iteracoes }}</td></tr>
+    <tr><th>Páginas</th><td>{{ c.paginas }}</td></tr>
+    <tr><th>Tempo</th><td>{{ '%.1f'|format(c.duracao_s or 0) }} s</td></tr>
+  </table>
+  {% endif %}
+
+  {% if c.relatorio.get('faltando') or c.relatorio.get('sobrando') %}
+    <h2>Diferenças de texto</h2>
+    <p>Faltando no Word: {{ c.relatorio.get('faltando')|join(', ') or '—' }}</p>
+    <p>Sobrando no Word: {{ c.relatorio.get('sobrando')|join(', ') or '—' }}</p>
+  {% endif %}
+
+  {% if c.avisos %}
+    <h2>Avisos</h2>
+    <ul>{% for a in c.avisos %}<li>{{ a }}</li>{% endfor %}</ul>
+  {% endif %}
+</section>
+
+{% if c.previas %}
+<section>
+  <h2>Comparação página a página</h2>
+  {% for original, gerado in c.previas %}
+    <div class="comparacao">
+      <figure><figcaption>PDF original — página {{ loop.index }}</figcaption>
+        <img src="{{ url_for('previa', conversao_id=c.id, nome=original) }}" alt="Original, página {{ loop.index }}"></figure>
+      <figure><figcaption>Word gerado — página {{ loop.index }}</figcaption>
+        <img src="{{ url_for('previa', conversao_id=c.id, nome=gerado) }}" alt="Word, página {{ loop.index }}"></figure>
+    </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if tentativas %}
+<section>
+  <h2>Tentativas</h2>
+  <table>
+    <thead><tr><th>Motor</th><th>Iteração</th><th>Aprovada</th><th>Texto idêntico</th><th>Desvio máx.</th><th>Pixels</th><th>Tempo</th></tr></thead>
+    <tbody>
+    {% for t in tentativas %}
+      <tr><td>{{ t.motor }}</td><td>{{ t.iteracao }}</td><td>{{ 'sim' if t.aprovado else 'não' }}</td>
+          <td>{{ 'sim' if t.texto_identico else 'não' }}</td><td>{{ '%.2f'|format(t.desvio_maximo_pt) }} pt</td>
+          <td>{{ '%.2f'|format(t.pixels_maximo_pct) }}%</td><td>{{ '%.1f'|format(t.duracao_s) }} s</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section>
+  <h2>Converter de novo</h2>
+  <form method="post" action="{{ url_for('reconverter', conversao_id=c.id) }}" class="opcoes">
+    <select name="motor">
+      <option value="">Automático</option>
+      {% for m in motores %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+    </select>
+    <button type="submit">Reconverter</button>
+  </form>
+</section>
+{% endblock %}

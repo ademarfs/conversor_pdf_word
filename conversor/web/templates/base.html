@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titulo %}Conversor PDF → Word{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='estilo.css') }}">
+</head>
+<body>
+  <header>
+    <a class="marca" href="{{ url_for('inicio') }}">Conversor PDF → Word</a>
+    <nav>
+      <a href="{{ url_for('inicio') }}">Converter</a>
+      <a href="{{ url_for('historico') }}">Histórico</a>
+    </nav>
+  </header>
+  <main>
+    {% with mensagens = get_flashed_messages() %}
+      {% for m in mensagens %}<p class="aviso">{{ m }}</p>{% endfor %}
+    {% endwith %}
+    {% if not word %}
+      <p class="aviso">Microsoft Word não encontrado: a conversão funciona, mas sem a verificação visual.</p>
+    {% endif %}
+    {% block conteudo %}{% endblock %}
+  </main>
+  <footer>versão {{ versao }} · os arquivos ficam somente nesta máquina</footer>
+</body>
+</html>

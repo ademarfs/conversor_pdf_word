@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Conversor PDF → Word</title>
+<style>
+body { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; font: 15px/1.6 "Segoe UI", Arial, sans-serif;
+       color: #1d2329; background: #fff; }
+h1, h2, h3 { line-height: 1.3; margin-top: 1.6em; }
+h1 { margin-top: 0; border-bottom: 1px solid #d9dee3; padding-bottom: 6px; }
+h2 { border-bottom: 1px solid #eceff2; padding-bottom: 4px; }
+a { color: #1f5fbf; }
+code { font: 13px Consolas, monospace; background: #f3f4f6; padding: 1px 4px; border-radius: 3px; }
+pre { background: #f3f4f6; padding: 12px; overflow-x: auto; border-radius: 4px; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; display: block; overflow-x: auto; }
+th, td { border: 1px solid #d9dee3; padding: 6px 10px; text-align: left; vertical-align: top; }
+th { background: #f6f7f9; }
+nav { font-size: 13px; color: #5c6670; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+
+</style>
+</head>
+<body>
+<nav><a href="README.html">README</a><a href="docs/ALGORITMO.html">ALGORITMO</a><a href="docs/ANALISE_E_PENDENCIAS.html">ANALISE_E_PENDENCIAS</a><a href="docs/ARQUITETURA.html">ARQUITETURA</a></nav>
+<h1 id="conversor-pdf--word">Conversor PDF → Word</h1>
+<p>Converte PDF em Word (<code>.docx</code>) <strong>idêntico ao original</strong> e <strong>prova</strong> que ficou idêntico: o próprio
+Microsoft Word renderiza o arquivo gerado, o sistema compara com o PDF palavra por palavra e pixel
+por pixel e, se algo divergir, corrige e tenta de novo automaticamente.</p>
+<p>Feito para documentos de layout fixo (certificados, laudos, formulários, relatórios de sistemas
+como SAP/Protheus), onde conversores comuns "desconfiguram" o arquivo.</p>
+<h2 id="requisitos">Requisitos</h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Observação</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Windows 10/11</td>
+<td>testado no Windows 11 Pro</td>
+</tr>
+<tr>
+<td>Microsoft Word 2016 ou superior / Microsoft 365</td>
+<td>usado para a verificação visual (sem ele, converte, mas só confere o texto)</td>
+</tr>
+<tr>
+<td>Python 3.10+</td>
+<td>o instalador baixa o 3.12 via <code>winget</code> se não houver</td>
+</tr>
+<tr>
+<td>Internet na instalação</td>
+<td>para baixar as dependências (<code>pip</code>)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="instalação-uma-vez">Instalação (uma vez)</h2>
+<ol>
+<li>Copie a pasta <code>ConversorPDFWord</code> para onde quiser (ex.: <code>C:\Ferramentas\ConversorPDFWord</code>).</li>
+<li>Dê <strong>duplo clique em <code>instalar.bat</code></strong>.</li>
+</ol>
+<p>O instalador encontra (ou instala) o Python, cria o ambiente isolado <code>.venv</code>, instala as
+dependências, verifica o Word e cria o atalho <strong>"Conversor PDF para Word"</strong> na área de trabalho.
+Não precisa de administrador. Pode ser executado de novo para atualizar.</p>
+<h2 id="uso">Uso</h2>
+<h3 id="pela-interface-recomendado">Pela interface (recomendado)</h3>
+<ol>
+<li>Abra o atalho <strong>Conversor PDF para Word</strong> (ou <code>iniciar.bat</code>). O navegador abre sozinho.</li>
+<li>Arraste o PDF para a área indicada e clique em <strong>Converter</strong>.</li>
+<li>Na tela de resultado: situação, métricas de fidelidade, comparação página a página
+   (original × Word) e o botão <strong>Baixar Word (.docx)</strong>.</li>
+</ol>
+<p>Mantenha a janela preta aberta enquanto usar; fechá-la encerra o conversor.
+A interface só atende a própria máquina (<code>127.0.0.1</code>), e os arquivos não saem dela.</p>
+<h3 id="arrastando-arquivos">Arrastando arquivos</h3>
+<p>Arraste um ou mais PDFs sobre <strong><code>converter.bat</code></strong>: o <code>.docx</code> é salvo ao lado de cada PDF.</p>
+<h3 id="linha-de-comando">Linha de comando</h3>
+<pre><code class="language-bat">.venv\Scripts\python -m conversor arquivo.pdf outro.pdf --saida C:\Saida
+.venv\Scripts\python -m conversor arquivo.pdf --motor absoluto --forcar
+.venv\Scripts\python -m conversor --diagnostico
+</code></pre>
+<p>Código de saída <code>0</code> = todos aprovados; <code>1</code> = algum com diferença ou erro.</p>
+<h2 id="como-ler-o-resultado">Como ler o resultado</h2>
+<table>
+<thead>
+<tr>
+<th>Situação</th>
+<th>Significado</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Idêntico ao original</strong></td>
+<td>Todo o texto confere, nenhuma palavra fora de posição além da tolerância (1 pt ≈ 0,35 mm) e nenhuma diferença visual relevante em linhas, imagens e formas.</td>
+</tr>
+<tr>
+<td><strong>Texto idêntico (sem verificação visual)</strong></td>
+<td>Word não encontrado: o texto foi conferido, a aparência não.</td>
+</tr>
+<tr>
+<td><strong>Com diferenças</strong></td>
+<td>Entregue a melhor tentativa; veja "Diferenças de texto", os avisos e a comparação visual.</td>
+</tr>
+<tr>
+<td><strong>Erro</strong></td>
+<td>PDF inválido, protegido por senha etc. A mensagem explica.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Motores</strong>: <em>Automático</em> tenta primeiro o motor <strong>tabela</strong> (o Word fica estruturado em tabela
+invisível, mais fácil de editar) e, se não ficar idêntico, o <strong>absoluto</strong> (cada linha de texto
+numa moldura na posição exata — máxima fidelidade, funciona com qualquer PDF).</p>
+<h2 id="o-que-fica-guardado-persistência">O que fica guardado (persistência)</h2>
+<p>Tudo em <code>dados\</code> (fora do controle de versão):</p>
+<table>
+<thead>
+<tr>
+<th>Caminho</th>
+<th>Conteúdo</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dados\conversor.db</code></td>
+<td>Banco SQLite: histórico, tentativas, calibração aprendida e perfis de documento</td>
+</tr>
+<tr>
+<td><code>dados\entrada\</code></td>
+<td>Cópia de cada PDF convertido (o original nunca é alterado)</td>
+</tr>
+<tr>
+<td><code>dados\saida\&lt;n&gt;\</code></td>
+<td>Word gerado e prévias da conversão <code>n</code></td>
+</tr>
+<tr>
+<td><code>dados\logs\conversor.log</code></td>
+<td>Registro detalhado (rotativo)</td>
+</tr>
+</tbody>
+</table>
+<p>O sistema <strong>aprende</strong>: o desvio que o Word introduz em cada fonte é gravado e aplicado às próximas
+conversões; o motor que funcionou para cada "tipo" de documento é tentado primeiro da próxima vez;
+um arquivo já convertido é reaproveitado (mesmo SHA-256) e, se reconvertido, parte dos ajustes
+que já deram certo. Arquivos com mais de 30 dias são apagados automaticamente (o histórico fica).</p>
+<h2 id="configuração">Configuração</h2>
+<p>Copie <code>config.exemplo.json</code> para <code>config.json</code> e altere o que precisar (porta, tolerâncias,
+número de tentativas, dias de retenção). Chaves e significado: <a href="docs/ARQUITETURA.html#configuração">docs/ARQUITETURA.md</a>.</p>
+<h2 id="solução-de-problemas">Solução de problemas</h2>
+<table>
+<thead>
+<tr>
+<th>Sintoma</th>
+<th>Causa provável / solução</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Instalação falha no <code>pip</code></td>
+<td>Sem internet ou proxy corporativo. Configure <code>HTTPS_PROXY</code> e execute <code>instalar.bat</code> de novo.</td>
+</tr>
+<tr>
+<td>"Microsoft Word não encontrado"</td>
+<td>Word ausente ou não registrado. Abra o Word uma vez e rode <code>python -m conversor --diagnostico</code>.</td>
+</tr>
+<tr>
+<td>Aviso "Fonte X não está instalada"</td>
+<td>O PDF usa uma fonte que o Windows não tem. Instale a fonte e reconverta (botão <strong>Reconverter</strong>).</td>
+</tr>
+<tr>
+<td>Conversão lenta</td>
+<td>Cada tentativa abre o Word em segundo plano (≈ 3–10 s por tentativa). PDFs com centenas de páginas levam minutos.</td>
+</tr>
+<tr>
+<td>Porta 8765 ocupada</td>
+<td>Defina outra <code>porta</code> no <code>config.json</code>.</td>
+</tr>
+<tr>
+<td>Resultado "Com diferenças"</td>
+<td>Veja <a href="docs/ANALISE_E_PENDENCIAS.html">docs/ANALISE_E_PENDENCIAS.md</a> (limitações conhecidas). Tente o motor <strong>absoluto</strong>.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="documentação">Documentação</h2>
+<ul>
+<li><a href="docs/ALGORITMO.html">docs/ALGORITMO.md</a> — como a conversão funciona, passo a passo, e as medições feitas no Word.</li>
+<li><a href="docs/ARQUITETURA.html">docs/ARQUITETURA.md</a> — módulos, fluxo, banco de dados, configuração, padrões de código.</li>
+<li><a href="docs/ANALISE_E_PENDENCIAS.html">docs/ANALISE_E_PENDENCIAS.md</a> — limitações, riscos e informações que faltam definir.</li>
+</ul>
+<p>Cada <code>.md</code> tem uma versão <code>.html</code> ao lado, para leitura no navegador. Edite só o <code>.md</code> e regere com
+<code>.venv\Scripts\python gerar_html_docs.py</code>.</p>
+<h2 id="desenvolvimento">Desenvolvimento</h2>
+<pre><code class="language-bat">.venv\Scripts\python -m pip install -r requirements-dev.txt
+.venv\Scripts\python -m pytest              :: testes (os marcados &quot;word&quot; usam o Word real)
+.venv\Scripts\python -m ruff check conversor tests
+set PASTA_EXEMPLOS=C:\pdfs-reais &amp;&amp; .venv\Scripts\python -m pytest -k reais
+</code></pre>
+<h2 id="desinstalar">Desinstalar</h2>
+<p><code>desinstalar.bat</code> remove o ambiente <code>.venv</code> e o atalho. A pasta <code>dados</code> é mantida; apague a pasta
+do projeto para remover tudo.</p>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# Padrão de qualidade do projeto:  .venv\Scripts\python -m ruff check conversor tests
+line-length = 120
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "W", "B", "SIM", "UP", "N"]
+# B905: zip(a, a[1:]) percorre pares consecutivos; tamanhos diferentes são intencionais.
+# N818: exceções seguem nomes de domínio em português (ErroConversao, PlanoInviavel).
+ignore = ["B905", "N818"]
